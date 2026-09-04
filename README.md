@@ -133,16 +133,18 @@ delivered.
 
 ### 4. Connect it to Claude
 
+`run_mcp.sh` is the entry point for both clients below. It anchors the
+working directory to the repository before starting the server, because
+Claude launches MCP servers from an arbitrary directory while `.env`
+discovery and the default relative `WHATSAPP_DB_PATH` resolve against the
+current one. Registering the bare interpreter path instead either fails to
+import the package or silently reads an empty database.
+
 Claude Code:
 
 ```bash
-claude mcp add whatsapp -- /bin/sh -c 'cd "$HOME/ProjectTest" && exec .venv/bin/python -m whatsapp.mcp_server'
+claude mcp add whatsapp -- /absolute/path/to/ProjectTest/run_mcp.sh
 ```
-
-The `cd` matters. Claude starts the server from whatever directory it happens
-to be in, and both `.env` discovery and the default relative `WHATSAPP_DB_PATH`
-resolve against the working directory -- without it the server either fails to
-import or silently reads an empty database.
 
 Claude Desktop — add to `claude_desktop_config.json`:
 
@@ -150,23 +152,17 @@ Claude Desktop — add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "whatsapp": {
-      "command": "/absolute/path/to/.venv/bin/python",
-      "args": ["-m", "whatsapp.mcp_server"],
-      "cwd": "/absolute/path/to/ProjectTest",
-      "env": {
-        "WHATSAPP_ACCESS_TOKEN": "...",
-        "WHATSAPP_PHONE_NUMBER_ID": "...",
-        "WHATSAPP_APP_SECRET": "...",
-        "WHATSAPP_VERIFY_TOKEN": "..."
-      }
+      "command": "/absolute/path/to/ProjectTest/run_mcp.sh"
     }
   }
 }
 ```
 
-Paths must be absolute. `cwd` matters: `WHATSAPP_DB_PATH` defaults to a
-relative path, so the MCP server must start in the same directory as the
-webhook or the two will use different databases.
+The path must be absolute. The script handles the working directory, so no
+`cwd` or `env` block is needed -- credentials come from the `.env` beside it.
+On macOS the config file lives at
+`~/Library/Application Support/Claude/claude_desktop_config.json`, and Claude
+must be fully quit and reopened for a change to take effect.
 
 Then ask Claude: *"What WhatsApp messages came in today?"*
 
