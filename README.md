@@ -136,8 +136,13 @@ delivered.
 Claude Code:
 
 ```bash
-claude mcp add whatsapp -- /absolute/path/to/.venv/bin/python -m whatsapp.mcp_server
+claude mcp add whatsapp -- /bin/sh -c 'cd "$HOME/ProjectTest" && exec .venv/bin/python -m whatsapp.mcp_server'
 ```
+
+The `cd` matters. Claude starts the server from whatever directory it happens
+to be in, and both `.env` discovery and the default relative `WHATSAPP_DB_PATH`
+resolve against the working directory -- without it the server either fails to
+import or silently reads an empty database.
 
 Claude Desktop — add to `claude_desktop_config.json`:
 
