@@ -16,6 +16,7 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "respx>=0.21"]
 
 [project.scripts]
 whatsapp-mcp = "whatsapp.mcp_server:main"
+whatsapp-doctor = "whatsapp.doctor:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

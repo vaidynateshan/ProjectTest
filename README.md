@@ -71,7 +71,19 @@ cp .env.example .env
   and not the WhatsApp Business Account ID.
 - `WHATSAPP_APP_SECRET` — *App Settings → Basic*. Verifies webhook signatures.
 - `WHATSAPP_VERIFY_TOKEN` — a random string you invent; you will paste the
-  same value into the dashboard in step 3.
+  same value into the dashboard in step 3. Generate one with
+  `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+Then confirm the values actually work before going any further:
+
+```bash
+.venv/bin/python -m whatsapp.doctor
+```
+
+It calls the Graph API with what you pasted and names the specific mistake if
+something is off — the App ID copied in place of the App Secret, the WhatsApp
+Business Account ID in place of the phone number ID, or a temporary token that
+has passed its 24-hour expiry.
 
 ### 2. Install and run the webhook
 
@@ -161,7 +173,7 @@ a colleague sent from the WhatsApp Manager UI still appear in the thread.
 .venv/bin/python -m pytest
 ```
 
-66 tests, no network access required — the Cloud API is mocked with `respx`.
+78 tests, no network access required — the Cloud API is mocked with `respx`.
 Coverage includes signature forgery and tampering, the verification
 handshake, webhook idempotency, every inbound message type, the 24-hour
 window in both states, and the two-step media download.
