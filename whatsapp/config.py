@@ -30,14 +30,25 @@ class ConfigError(RuntimeError):
 class Settings:
     """Everything the bridge needs to talk to the Cloud API."""
 
-    access_token: str
-    phone_number_id: str
     app_secret: str
     verify_token: str
+    #: Only needed to send messages and to download media attachments.
+    #: Reading works without them: message content arrives inside the webhook.
+    access_token: str = ""
+    phone_number_id: str = ""
     api_version: str = DEFAULT_API_VERSION
     graph_base: str = DEFAULT_GRAPH_BASE
     db_path: Path = Path("whatsapp.db")
     media_dir: Path = Path("media")
+
+    @property
+    def can_send(self) -> bool:
+        """Whether outbound calls are configured.
+
+        False puts the bridge in read-only mode: the webhook still records
+        everything, but nothing can be sent and media cannot be fetched.
+        """
+        return bool(self.access_token and self.phone_number_id)
 
     @property
     def base_url(self) -> str:
@@ -55,20 +66,25 @@ class Settings:
         return f"{self.base_url}/{media_id}"
 
 
+#: Receiving messages needs only these two: the app secret verifies the
+#: signature on incoming webhooks, and the verify token completes the
+#: subscription handshake. Message content arrives in the payload itself.
 _REQUIRED = {
-    "WHATSAPP_ACCESS_TOKEN": "access_token",
-    "WHATSAPP_PHONE_NUMBER_ID": "phone_number_id",
     "WHATSAPP_APP_SECRET": "app_secret",
     "WHATSAPP_VERIFY_TOKEN": "verify_token",
 }
+
+#: Needed only to send messages and download media.
+_SEND_ONLY = ("WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID")
 
 
 def load_settings(env: dict[str, str] | None = None) -> Settings:
     """Build :class:`Settings` from the environment.
 
-    Reports *all* missing variables at once rather than failing on the first,
-    which matters because these are set up in four different places in Meta's
-    dashboard.
+    Only the app secret and verify token are required. Without an access
+    token and phone number ID the bridge runs read-only: the webhook records
+    every inbound message, but sending and media download are unavailable.
+    Reports all missing variables at once rather than failing on the first.
     """
     source = os.environ if env is None else env
 
@@ -78,13 +94,14 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
             "Missing required environment variable(s): "
             + ", ".join(sorted(missing))
             + ". Copy .env.example to .env and fill it in."
+            + " (Only these two are needed to receive messages.)"
         )
 
     return Settings(
-        access_token=source["WHATSAPP_ACCESS_TOKEN"],
-        phone_number_id=source["WHATSAPP_PHONE_NUMBER_ID"],
         app_secret=source["WHATSAPP_APP_SECRET"],
         verify_token=source["WHATSAPP_VERIFY_TOKEN"],
+        access_token=source.get("WHATSAPP_ACCESS_TOKEN") or "",
+        phone_number_id=source.get("WHATSAPP_PHONE_NUMBER_ID") or "",
         api_version=source.get("WHATSAPP_API_VERSION") or DEFAULT_API_VERSION,
         graph_base=source.get("WHATSAPP_GRAPH_BASE") or DEFAULT_GRAPH_BASE,
         db_path=Path(source.get("WHATSAPP_DB_PATH") or "whatsapp.db"),

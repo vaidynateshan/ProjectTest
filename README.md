@@ -50,6 +50,23 @@ and `send_message` refuses locally — without spending an API call — when it
 knows the window has closed. A contact the store has never seen is always
 attempted, since the local database may simply predate them.
 
+## Read-only mode
+
+To only *read* messages, two values are enough: `WHATSAPP_APP_SECRET` and
+`WHATSAPP_VERIFY_TOKEN`. Message content arrives inside the webhook payload
+itself, so no access token is involved in receiving. Leave
+`WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` unset and the bridge
+starts in read-only mode: `list_threads`, `read_thread` and `search_messages`
+work; the send tools and `download_media` explain that they are disabled.
+
+This does not reduce the Meta-side setup. A phone number must still be
+connected to the Cloud API and the webhook subscribed to the `messages`
+field, because the webhook is the only mechanism by which messages arrive.
+
+**Connecting a number to the Cloud API takes it over.** That number can no
+longer be used in the WhatsApp Business phone app -- the Cloud API becomes
+its only client. Use Meta's free test number if you are not ready for that.
+
 ## Setup
 
 ### 1. Meta side
@@ -62,6 +79,8 @@ From the App Dashboard collect four values into `.env`:
 ```bash
 cp .env.example .env
 ```
+
+Only the last two are needed for read-only use; the first two enable sending.
 
 - `WHATSAPP_ACCESS_TOKEN` — *WhatsApp → API Setup*. The temporary token
   expires in 24 hours; for real use create a System User in Business Settings
@@ -173,7 +192,7 @@ a colleague sent from the WhatsApp Manager UI still appear in the thread.
 .venv/bin/python -m pytest
 ```
 
-78 tests, no network access required — the Cloud API is mocked with `respx`.
+91 tests, no network access required — the Cloud API is mocked with `respx`.
 Coverage includes signature forgery and tampering, the verification
 handshake, webhook idempotency, every inbound message type, the 24-hour
 window in both states, and the two-step media download.

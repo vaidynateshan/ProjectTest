@@ -43,6 +43,17 @@ def get_bridge() -> WhatsAppBridge:
     return _bridge
 
 
+_NO_SEND = (
+    "This bridge is running in read-only mode: WHATSAPP_ACCESS_TOKEN and "
+    "WHATSAPP_PHONE_NUMBER_ID are not set, so messages can be read but not "
+    "sent. Set both in .env and restart to enable sending."
+)
+
+
+def _sending_disabled(bridge: WhatsAppBridge) -> bool:
+    return not bridge.settings.can_send
+
+
 def _ts(value: int | None) -> str:
     if not value:
         return "unknown"
@@ -150,6 +161,8 @@ async def send_message(
     to: str, text: str, reply_to: str | None = None, preview_url: bool = False
 ) -> str:
     bridge = get_bridge()
+    if _sending_disabled(bridge):
+        return _NO_SEND
 
     try:
         wa_id = normalise_number(to)
@@ -192,6 +205,8 @@ async def send_template(
     body_params: list[str] | None = None,
 ) -> str:
     bridge = get_bridge()
+    if _sending_disabled(bridge):
+        return _NO_SEND
     try:
         response = await bridge.send_template(
             to,
@@ -226,6 +241,9 @@ async def send_media(
     if media_type not in allowed:
         return f"Error: media_type must be one of {', '.join(sorted(allowed))}."
 
+    if _sending_disabled(get_bridge()):
+        return _NO_SEND
+
     try:
         response = await get_bridge().send_media(
             to, media_type, link=link, caption=caption, filename=filename  # type: ignore[arg-type]
@@ -246,6 +264,11 @@ async def send_media(
     )
 )
 async def download_media(media_id: str) -> str:
+    if _sending_disabled(get_bridge()):
+        return (
+            "Media download needs an access token. " + _NO_SEND
+        )
+
     try:
         path = await get_bridge().download_media(media_id)
     except CloudAPIError as exc:
@@ -260,6 +283,9 @@ async def download_media(media_id: str) -> str:
     )
 )
 async def mark_read(message_id: str, typing: bool = False) -> str:
+    if _sending_disabled(get_bridge()):
+        return _NO_SEND
+
     try:
         await get_bridge().mark_read(message_id, typing=typing)
     except CloudAPIError as exc:

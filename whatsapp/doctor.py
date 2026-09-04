@@ -226,8 +226,25 @@ def main() -> int:
     results = [
         ("App secret", *check_app_secret(settings.app_secret)),
         ("Verify token", *check_verify_token(settings.verify_token)),
-        ("Access token + phone number ID", *check_phone_number(settings)),
     ]
+
+    if settings.can_send:
+        results.append(
+            ("Access token + phone number ID", *check_phone_number(settings))
+        )
+    else:
+        # Reading needs neither. Say so plainly rather than failing on
+        # credentials this deployment has deliberately not supplied.
+        results.append(
+            (
+                "Access token + phone number ID",
+                OK,
+                "Not set -- running in READ-ONLY mode. The webhook will "
+                "record every incoming message. Sending messages and "
+                "downloading media attachments are unavailable until "
+                "WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID are set.",
+            )
+        )
 
     for label, status, detail in results:
         print(_line(status, label, detail))
@@ -241,7 +258,11 @@ def main() -> int:
         print("Usable, but review the warnings above.")
         return 0
 
-    print("All good. Next: start the webhook and subscribe it in the dashboard.")
+    mode = "" if settings.can_send else " (read-only)"
+    print(
+        f"All good{mode}. Next: start the webhook and subscribe it in the "
+        "dashboard."
+    )
     return 0
 
 
