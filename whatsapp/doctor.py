@@ -28,6 +28,11 @@ WARN = "WARN"
 #: Meta app secrets are 32 lowercase hex characters.
 _APP_SECRET_RE = re.compile(r"^[0-9a-f]{32}$")
 
+#: Meta names the object it actually found, e.g.
+#: "... on node type (WhatsAppBusinessAccount)". Worth surfacing: it is the
+#: difference between "your ID is wrong" and "your ID is the wrong kind".
+_NODE_TYPE_RE = re.compile(r"on node type \(([^)]+)\)")
+
 _WEAK_VERIFY_TOKENS = {
     "", "token", "verify", "test", "changeme", "secret", "password",
     "your-verify-token", "whatsapp",
@@ -110,6 +115,19 @@ def interpret_phone_lookup(
             "have the WhatsApp Business Account assigned as an asset."
         )
     if code == 100:
+        # Two very different situations share this code. "Nonexisting field"
+        # means the ID resolved to a real object that simply is not a phone
+        # number -- almost always the WhatsApp Business Account ID, which sits
+        # directly beside the phone number ID in the dashboard.
+        if is_wrong_object_type(body):
+            node = _NODE_TYPE_RE.search(message)
+            found = node.group(1) if node else "something other than a phone number"
+            return BAD, (
+                f"That ID exists, but it is {found} -- not a phone number.\n         "
+                "Your access token is working; only the ID is wrong. Copy "
+                "'Phone number ID' from WhatsApp > API Setup, which sits above "
+                "the WhatsApp Business Account ID."
+            )
         return BAD, (
             f"The phone number ID was not found: {message}\n         "
             "Check you copied 'Phone number ID' from WhatsApp > API Setup -- "
@@ -117,6 +135,36 @@ def interpret_phone_lookup(
             "Account ID directly below it."
         )
     return BAD, f"Unexpected error (code {code}): {message}"
+
+
+def is_wrong_object_type(body: dict[str, Any]) -> bool:
+    """True when the ID resolved but is not a phone number object."""
+    error = body.get("error") or {}
+    if error.get("code") != 100:
+        return False
+    return "nonexisting field" in (error.get("message") or "").lower()
+
+
+def discover_phone_numbers(
+    settings: Settings, account_id: str
+) -> list[dict[str, Any]]:
+    """List the phone numbers under a WhatsApp Business Account.
+
+    Used to hand back the correct ID once we know the configured one is a
+    WABA ID -- hunting for it in the dashboard is what goes wrong.
+    """
+    try:
+        response = httpx.get(
+            f"{settings.base_url}/{account_id}/phone_numbers",
+            params={"fields": "id,display_phone_number,verified_name"},
+            headers={"Authorization": f"Bearer {settings.access_token}"},
+            timeout=15.0,
+        )
+        if response.status_code != 200:
+            return []
+        return response.json().get("data") or []
+    except (httpx.RequestError, ValueError):
+        return []
 
 
 def check_phone_number(settings: Settings) -> tuple[str, str]:
@@ -138,7 +186,31 @@ def check_phone_number(settings: Settings) -> tuple[str, str]:
     except ValueError:
         body = {}
 
-    return interpret_phone_lookup(response.status_code, body)
+    status, detail = interpret_phone_lookup(response.status_code, body)
+
+    # When the ID turns out to be a WABA, ask Meta for the phone numbers under
+    # it so the correct value can be pasted straight in.
+    if status == BAD and is_wrong_object_type(body):
+        numbers = discover_phone_numbers(settings, settings.phone_number_id)
+        if numbers:
+            lines = "\n".join(
+                f"           WHATSAPP_PHONE_NUMBER_ID={n.get('id')}"
+                f"   ({n.get('display_phone_number', '?')}"
+                f" - {n.get('verified_name', 'unnamed')})"
+                for n in numbers
+            )
+            detail += (
+                "\n\n         Found these phone numbers on that account -- "
+                "put one in your .env:\n" + lines
+            )
+        else:
+            detail += (
+                "\n\n         Could not list phone numbers on that account. "
+                "The token may lack whatsapp_business_management, or no "
+                "number is registered yet."
+            )
+
+    return status, detail
 
 
 def main() -> int:
