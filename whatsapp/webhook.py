@@ -17,11 +17,12 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, FastAPI, Query, Request, Response
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from .bridge import WhatsAppBridge
 from .config import Settings, load_settings
 from .models import parse_webhook
+from .onboarding import onboarding_page
 from .signature import SIGNATURE_HEADER, verify_signature
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,18 @@ async def health(request: Request) -> dict[str, Any]:
         "api_version": bridge.settings.api_version,
         "threads": len(bridge.list_threads(limit=1000)),
     }
+
+
+@router.get("/onboard")
+async def onboard(request: Request) -> Response:
+    """Serve the Coexistence onboarding flow.
+
+    Embedded Signup must run on an HTTPS origin registered with the app, and
+    the tunnel fronting this webhook already is one -- so the page is served
+    from here rather than needing separate hosting.
+    """
+    html, status_code = onboarding_page(_bridge(request).settings)
+    return HTMLResponse(html, status_code=status_code)
 
 
 @router.get("/webhook")

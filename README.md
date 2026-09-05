@@ -81,6 +81,22 @@ Known limits of Coexistence, which are Meta's rather than this bridge's:
 - Messages sent from some companion clients, such as WhatsApp for Windows,
   are not echoed and so cannot be mirrored.
 
+### Connecting a number that is already in the app
+
+Coexistence onboarding runs through Meta's Embedded Signup, a JavaScript
+flow rather than a dashboard button, and it must be served over HTTPS from a
+domain registered on the app's Facebook Login for Business configuration.
+The tunnel fronting the webhook is already such a domain, so the flow is
+served from the webhook itself at `/onboard`.
+
+Set `META_APP_ID` and `META_CONFIG_ID`, then open
+`https://<your-tunnel>/onboard` and follow the flow. It asks you to scan a
+QR code from the WhatsApp Business app, and returns the phone number ID and
+WABA ID to paste into `.env`.
+
+Subscribe `history` and `smb_message_echoes` **before** onboarding. History
+is sent once, in the minutes after it succeeds.
+
 ## Read-only mode
 
 To only *read* messages, two values are enough: `WHATSAPP_APP_SECRET` and

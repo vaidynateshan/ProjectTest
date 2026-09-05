@@ -36,10 +36,18 @@ class Settings:
     #: Reading works without them: message content arrives inside the webhook.
     access_token: str = ""
     phone_number_id: str = ""
+    #: Only needed to serve the Coexistence onboarding page at /onboard.
+    app_id: str = ""
+    config_id: str = ""
     api_version: str = DEFAULT_API_VERSION
     graph_base: str = DEFAULT_GRAPH_BASE
     db_path: Path = Path("whatsapp.db")
     media_dir: Path = Path("media")
+
+    @property
+    def can_onboard(self) -> bool:
+        """Whether the Embedded Signup page at /onboard can be served."""
+        return bool(self.app_id and self.config_id)
 
     @property
     def can_send(self) -> bool:
@@ -102,6 +110,8 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
         verify_token=source["WHATSAPP_VERIFY_TOKEN"],
         access_token=source.get("WHATSAPP_ACCESS_TOKEN") or "",
         phone_number_id=source.get("WHATSAPP_PHONE_NUMBER_ID") or "",
+        app_id=source.get("META_APP_ID") or "",
+        config_id=source.get("META_CONFIG_ID") or "",
         api_version=source.get("WHATSAPP_API_VERSION") or DEFAULT_API_VERSION,
         graph_base=source.get("WHATSAPP_GRAPH_BASE") or DEFAULT_GRAPH_BASE,
         db_path=Path(source.get("WHATSAPP_DB_PATH") or "whatsapp.db"),

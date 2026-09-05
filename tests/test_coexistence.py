@@ -9,6 +9,7 @@ Without these the bridge sees only half of every conversation.
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 
 from whatsapp.bridge import WhatsAppBridge
 from whatsapp.models import parse_webhook
@@ -256,3 +257,63 @@ def test_history_redelivery_is_idempotent(bridge: WhatsAppBridge) -> None:
     assert first["messages_stored"] == 1
     assert second["messages_duplicate"] == 1
     assert len(bridge.read_thread("447700900123")) == 1
+
+
+# -- the onboarding page ------------------------------------------------
+
+
+class TestOnboardingPage:
+    """Embedded Signup is how a Business-app number joins the Cloud API."""
+
+    def _client(self, settings, tmp_path):
+        from fastapi.testclient import TestClient
+        from whatsapp.bridge import WhatsAppBridge
+        from whatsapp.cloud_api import CloudAPIClient
+        from whatsapp.store import ConversationStore
+        from whatsapp.webhook import create_app
+
+        b = WhatsAppBridge(
+            settings,
+            store=ConversationStore(settings.db_path),
+            client=CloudAPIClient(settings),
+        )
+        return TestClient(create_app(bridge=b))
+
+    def test_page_carries_the_app_and_config_ids(self, settings, tmp_path):
+        configured = replace(
+            settings, app_id="1398155861925806", config_id="7788990011"
+        )
+        with self._client(configured, tmp_path) as client:
+            response = client.get("/onboard")
+
+        assert response.status_code == 200
+        assert "1398155861925806" in response.text
+        assert "7788990011" in response.text
+
+    def test_page_requests_coexistence_not_a_new_number(self, settings, tmp_path):
+        """featureType is the switch; without it Meta provisions a new number."""
+        configured = replace(settings, app_id="123", config_id="456")
+        with self._client(configured, tmp_path) as client:
+            body = client.get("/onboard").text
+
+        assert "whatsapp_business_app_onboarding" in body
+        assert "sessionInfoVersion" in body
+
+    def test_page_reminds_about_the_history_subscription(
+        self, settings, tmp_path
+    ):
+        """History is sent once; missing the subscription loses it for good."""
+        configured = replace(settings, app_id="123", config_id="456")
+        with self._client(configured, tmp_path) as client:
+            body = client.get("/onboard").text
+
+        assert "history" in body
+        assert "smb_message_echoes" in body
+
+    def test_unconfigured_explains_what_is_missing(self, settings, tmp_path):
+        with self._client(settings, tmp_path) as client:
+            response = client.get("/onboard")
+
+        assert response.status_code == 503
+        assert "META_APP_ID" in response.text
+        assert "META_CONFIG_ID" in response.text
