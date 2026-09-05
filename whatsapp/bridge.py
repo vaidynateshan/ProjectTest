@@ -63,7 +63,7 @@ class WhatsAppBridge:
         """Persist a parsed webhook. Safe to call twice with the same batch."""
         stored = duplicates = 0
         for message in parsed.messages:
-            if self.store.save_inbound(message):
+            if self.store.save_message(message):
                 stored += 1
             else:
                 duplicates += 1

@@ -17,12 +17,19 @@ MEDIA_TYPES = frozenset({"image", "video", "audio", "document", "sticker"})
 
 @dataclass
 class InboundMessage:
-    """A single message a customer sent to the business number."""
+    """One message in a conversation.
+
+    Named for the common case, but Coexistence also delivers messages the
+    business itself sent from the WhatsApp Business app, so ``direction``
+    distinguishes them.
+    """
 
     id: str
     wa_id: str
     msg_type: str
     timestamp: int
+    #: "in" from the customer, "out" sent by the business.
+    direction: str = "in"
     text: str | None = None
     media_id: str | None = None
     mime_type: str | None = None
@@ -190,6 +197,63 @@ def parse_webhook(payload: dict[str, Any]) -> ParsedWebhook:
                         raw=message,
                     )
                 )
+
+            # Coexistence: messages the business sent from the WhatsApp
+            # Business app on their phone, mirrored back to us.
+            for echo in value.get("message_echoes") or []:
+                if not isinstance(echo, dict) or not echo.get("id"):
+                    continue
+                text, media_id, mime_type, filename = _extract_content(echo)
+                result.messages.append(
+                    InboundMessage(
+                        id=echo["id"],
+                        # The thread is keyed on the customer, who is the
+                        # recipient when the business is the sender.
+                        wa_id=echo.get("to") or "",
+                        msg_type=echo.get("type") or "unknown",
+                        timestamp=_as_int(echo.get("timestamp")),
+                        direction="out",
+                        text=text,
+                        media_id=media_id,
+                        mime_type=mime_type,
+                        filename=filename,
+                        reply_to=(echo.get("context") or {}).get("id"),
+                        raw=echo,
+                    )
+                )
+
+            # Coexistence: the backfill of conversations that already existed
+            # in the app, delivered in chunks after onboarding.
+            for chunk in value.get("history") or []:
+                if not isinstance(chunk, dict):
+                    continue
+                for thread in chunk.get("threads") or []:
+                    if not isinstance(thread, dict):
+                        continue
+                    thread_id = thread.get("id") or ""
+                    for message in thread.get("messages") or []:
+                        if not isinstance(message, dict) or not message.get("id"):
+                            continue
+                        text, media_id, mime_type, filename = _extract_content(message)
+                        sender = message.get("from") or ""
+                        result.messages.append(
+                            InboundMessage(
+                                id=message["id"],
+                                wa_id=thread_id,
+                                msg_type=message.get("type") or "unknown",
+                                timestamp=_as_int(message.get("timestamp")),
+                                # In a backfilled thread the customer is the
+                                # thread id, so anyone else is the business.
+                                direction="in" if sender == thread_id else "out",
+                                text=text,
+                                media_id=media_id,
+                                mime_type=mime_type,
+                                filename=filename,
+                                reply_to=(message.get("context") or {}).get("id"),
+                                profile_name=names.get(thread_id),
+                                raw=message,
+                            )
+                        )
 
             for status in value.get("statuses") or []:
                 if not isinstance(status, dict) or not status.get("id"):

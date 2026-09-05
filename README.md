@@ -50,6 +50,37 @@ and `send_message` refuses locally — without spending an API call — when it
 knows the window has closed. A contact the store has never seen is always
 attempted, since the local database may simply predate them.
 
+## Coexistence: keep using the WhatsApp Business app
+
+Registering a number with the Cloud API normally takes it over -- the app
+stops working on it. **Coexistence** is Meta's alternative: the same number
+stays live in the WhatsApp Business app *and* on the Cloud API, with messages
+mirrored both ways. It rolled out from May 2025 and is now available
+worldwide.
+
+That is usually what you want when the number is already in daily use. You
+carry on replying from your phone, and the bridge sees everything.
+
+Under Coexistence two extra webhook fields carry the app's activity, and both
+must be subscribed alongside `messages`:
+
+| Field | Carries |
+|---|---|
+| `smb_message_echoes` | messages you send from the phone app |
+| `history` | the backfill of conversations that predate onboarding |
+
+Both are parsed into the same conversation store as ordinary messages, with
+the right direction, so a thread reads as a conversation rather than only the
+customer's half. History arrives in chunks that may be delivered out of
+order; ingestion is keyed on message ID, so repeats and reordering are safe.
+
+Known limits of Coexistence, which are Meta's rather than this bridge's:
+
+- Throughput is capped at 5 messages per second.
+- Official Business Account status (the blue badge) is not available.
+- Messages sent from some companion clients, such as WhatsApp for Windows,
+  are not echoed and so cannot be mirrored.
+
 ## Read-only mode
 
 To only *read* messages, two values are enough: `WHATSAPP_APP_SECRET` and
@@ -193,7 +224,7 @@ a colleague sent from the WhatsApp Manager UI still appear in the thread.
 .venv/bin/python -m pytest
 ```
 
-91 tests, no network access required — the Cloud API is mocked with `respx`.
+98 tests, no network access required — the Cloud API is mocked with `respx`.
 Coverage includes signature forgery and tampering, the verification
 handshake, webhook idempotency, every inbound message type, the 24-hour
 window in both states, and the two-step media download.

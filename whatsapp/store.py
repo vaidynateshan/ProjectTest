@@ -113,9 +113,11 @@ class ConversationStore:
                 (wa_id, profile_name, seen_at, seen_at),
             )
 
-    def save_inbound(self, message: InboundMessage) -> bool:
-        """Persist an inbound message. Returns False if already stored.
+    def save_message(self, message: InboundMessage) -> bool:
+        """Persist a message from a webhook. Returns False if already stored.
 
+        Handles both directions: Coexistence delivers messages the business
+        sent from its own phone, and backfilled history contains both sides.
         Meta redelivers webhooks on any non-200, so this must be idempotent.
         """
         if message.profile_name or message.wa_id:
@@ -127,11 +129,12 @@ class ConversationStore:
                 INSERT OR IGNORE INTO messages
                     (id, wa_id, direction, msg_type, text, media_id, mime_type,
                      filename, reply_to, status, error, timestamp, raw, created_at)
-                VALUES (?, ?, 'in', ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
                 """,
                 (
                     message.id,
                     message.wa_id,
+                    message.direction,
                     message.msg_type,
                     message.text,
                     message.media_id,
